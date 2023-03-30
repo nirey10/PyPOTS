@@ -60,7 +60,7 @@ class BaseClassifier(BaseModel):
         pass
 
 
-class BaseNNClassifier(BaseNNModel, BaseClassifier):
+class BaseNNRegressor(BaseNNModel, BaseClassifier):
     def __init__(
         self,
         n_classes,

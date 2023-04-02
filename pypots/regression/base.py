@@ -62,14 +62,14 @@ class BaseClassifier(BaseModel):
 
 class BaseNNRegressor(BaseNNModel, BaseClassifier):
     def __init__(
-        self,
-        n_classes,
-        learning_rate,
-        epochs,
-        patience,
-        batch_size,
-        weight_decay,
-        device,
+            self,
+            n_classes,
+            learning_rate,
+            epochs,
+            patience,
+            batch_size,
+            weight_decay,
+            device,
     ):
         super().__init__(
             learning_rate, epochs, patience, batch_size, weight_decay, device
@@ -97,9 +97,10 @@ class BaseNNRegressor(BaseNNModel, BaseClassifier):
                     inputs = self.assemble_input_data(data)
                     self.optimizer.zero_grad()
                     results = self.model.forward(inputs)
-                    results["loss"].backward()
-                    self.optimizer.step()
-                    epoch_train_loss_collector.append(results["loss"].item())
+                    if not torch.isnan(results["loss"]):
+                        results["loss"].backward()
+                        self.optimizer.step()
+                        epoch_train_loss_collector.append(results["loss"].item())
 
                 mean_train_loss = np.mean(
                     epoch_train_loss_collector
@@ -113,7 +114,8 @@ class BaseNNRegressor(BaseNNModel, BaseClassifier):
                         for idx, data in enumerate(val_loader):
                             inputs = self.assemble_input_data(data)
                             results = self.model.forward(inputs)
-                            epoch_val_loss_collector.append(results["loss"].item())
+                            if not torch.isnan(results["loss"]):
+                                epoch_val_loss_collector.append(results["loss"].item())
 
                     mean_val_loss = np.mean(epoch_val_loss_collector)
                     self.logger["validating_loss"].append(mean_val_loss)
@@ -153,3 +155,60 @@ class BaseNNRegressor(BaseNNModel, BaseClassifier):
             raise ValueError("Something is wrong. best_loss is Nan after training.")
 
         logger.info("Finished training.")
+
+    def _model_predict(self, training_loader, val_loader=None):
+        try:
+            self.model.eval()
+            epoch_train_loss_collector = []
+            epoch_train_predictions_collector = []
+            epoch_train_gt_collector = []
+            mean_val_loss = None
+            epoch_val_predictions_collector = None
+            epoch_val_gt_collector = None
+
+            for idx, data in enumerate(training_loader):
+                inputs = self.assemble_input_data(data)
+                results = self.model.forward(inputs)
+                if not torch.isnan(results["loss"]):
+                    epoch_train_predictions_collector.append(results["prediction"].detach().cpu().numpy()[0][0])
+                    epoch_train_gt_collector.append(results["gt"].detach().cpu().numpy()[0][0])
+                    epoch_train_loss_collector.append(results["loss"].item())
+                else:
+                    # epoch_train_loss_collector.append(0)
+                    epoch_train_predictions_collector.append(np.nan)
+                    epoch_train_gt_collector.append(np.nan)
+
+            mean_train_loss = np.mean(
+                epoch_train_loss_collector
+            )  # mean training loss of the current epoch
+
+            if val_loader is not None:
+                epoch_val_predictions_collector = []
+                epoch_val_gt_collector = []
+
+                self.model.eval()
+                epoch_val_loss_collector = []
+                with torch.no_grad():
+                    for idx, data in enumerate(val_loader):
+                        inputs = self.assemble_input_data(data)
+                        results = self.model.forward(inputs)
+                        if not torch.isnan(results["loss"]):
+                            epoch_val_predictions_collector.append(results["prediction"].detach().cpu().numpy()[0][0])
+                            epoch_val_gt_collector.append(results["gt"].detach().cpu().numpy()[0][0])
+                            epoch_val_loss_collector.append(results["loss"].item())
+                        else:
+                            # epoch_val_loss_collector.append(0)
+                            epoch_val_predictions_collector.append(np.nan)
+                            epoch_val_gt_collector.append(np.nan)
+
+                mean_val_loss = np.mean(epoch_val_loss_collector)
+
+            return mean_train_loss, epoch_train_predictions_collector, epoch_train_gt_collector, \
+                mean_val_loss, epoch_val_predictions_collector, epoch_val_gt_collector
+
+
+        except Exception as e:
+            logger.info(f"Exception: {e}")
+            return None, None, None
+        logger.info("Finished training.")
+

@@ -15,7 +15,7 @@ from pypots.imputation.brits import TemporalDecay
 
 
 class _GRUD_REGRESSOR(nn.Module):
-    def __init__(self, n_steps, n_features, rnn_hidden_size, n_classes, device=None, n_output=1):
+    def __init__(self, n_steps, n_features, rnn_hidden_size, n_classes, device=None, n_output=1, window=49, horizon=1):
         super().__init__()
         self.n_steps = n_steps
         self.n_features = n_features
@@ -23,6 +23,8 @@ class _GRUD_REGRESSOR(nn.Module):
         self.n_classes = n_classes
         self.device = device
         self.n_output = n_output
+        self.window = window
+        self.horizon = horizon
 
         # create models
         self.rnn_cell = nn.GRUCell(
@@ -49,12 +51,23 @@ class _GRUD_REGRESSOR(nn.Module):
             (values.size()[0], self.rnn_hidden_size), device=self.device
         )
 
-        for t in range(self.n_steps - 1):
+        predictions = []
+
+        reconstruction_indices = [0]
+
+        for t in range(self.window + self.horizon):
             # for data, [batch, time, features]
-            x = values[:, t, :]  # values
+            x = values[:, t, :].clone()  # values
             m = masks[:, t, :]  # mask
             d = deltas[:, t, :]  # delta, time gap
-            x_filledLOCF = X_filledLOCF[:, t, :]
+            x_filledLOCF = X_filledLOCF[:, t, :].clone()
+
+            # prediction phase - feeding the predicted values
+            if t >= self.window:
+                preds = self.regression_head(hidden_state)
+                predictions.append(preds)
+                x[:, reconstruction_indices] = preds[:, reconstruction_indices] * m[:, reconstruction_indices]
+                # TODO: ffill vector of the predicted values, need new x_filledLOCF vector
 
             gamma_h = self.temp_decay_h(d)
             gamma_x = self.temp_decay_x(d)
@@ -65,9 +78,7 @@ class _GRUD_REGRESSOR(nn.Module):
             inputs = torch.cat([x_replaced, hidden_state, m], dim=1)
             hidden_state = self.rnn_cell(inputs, hidden_state)
 
-        logits = self.regression_head(hidden_state)
-        # prediction = torch.softmax(logits, dim=1)
-        return logits
+        return predictions
 
     def forward(self, inputs):
         """Forward processing of GRU-D.
@@ -85,14 +96,19 @@ class _GRUD_REGRESSOR(nn.Module):
         values = inputs["X"]
         masks = inputs["missing_mask"]
 
-        target = values[:, -1, 0].unsqueeze(dim=1)
-        target_mask = masks[:, -1, 0]
-        value_exist_indices = target_mask == 1
-
         prediction = self.predict(inputs)
-        # classification_loss = F.nll_loss(torch.log(prediction), inputs["label"])
-        regression_loss = nn.L1Loss()(prediction[value_exist_indices], target[value_exist_indices])
-        results = {"prediction": prediction, "loss": regression_loss, "gt": target}
+        targets = values[:, -self.horizon:, 0]
+        regression_loss = 0.
+
+        for idx in range(self.horizon):
+            pred = prediction[idx]
+            horison_idx_from_end = (self.horizon - idx)
+            target = values[:, -horison_idx_from_end, 0].unsqueeze(dim=1)
+            target_mask = masks[:, -horison_idx_from_end, 0]
+            value_exist_indices = target_mask == 1
+            regression_loss += nn.L1Loss()(pred[value_exist_indices], target[value_exist_indices])
+
+        results = {"prediction": prediction, "loss": regression_loss, "gt": targets}
         return results
 
 
@@ -138,20 +154,27 @@ class GRUD_REGRESSOR(BaseNNRegressor):
         batch_size=32,
         weight_decay=1e-5,
         device=None,
+        window=49,
+        horizon=1
     ):
         super().__init__(
             n_classes, learning_rate, epochs, patience, batch_size, weight_decay, device
         )
 
-        self.n_steps = n_steps
+        self.n_steps = window + horizon
         self.n_features = n_features
         self.rnn_hidden_size = rnn_hidden_size
+        self.window = window
+        self.horizon = horizon
         self.model = _GRUD_REGRESSOR(
             self.n_steps,
             self.n_features,
             self.rnn_hidden_size,
             self.n_classes,
             self.device,
+            n_output=1,
+            window=self.window,
+            horizon=self.horizon
         )
         self.model = self.model.to(self.device)
         self._print_model_size()

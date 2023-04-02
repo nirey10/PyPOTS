@@ -170,8 +170,9 @@ class BaseNNRegressor(BaseNNModel, BaseClassifier):
                 inputs = self.assemble_input_data(data)
                 results = self.model.forward(inputs)
                 if not torch.isnan(results["loss"]):
-                    epoch_train_predictions_collector.append(results["prediction"].detach().cpu().numpy()[0][0])
-                    epoch_train_gt_collector.append(results["gt"].detach().cpu().numpy()[0][0])
+                    # taking only the last prediction no matter hoy long is the horizon
+                    epoch_train_predictions_collector.append(torch.tensor(results["prediction"]).detach().cpu().numpy()[-1])
+                    epoch_train_gt_collector.append(torch.tensor(results["gt"]).detach().cpu().numpy()[0][-1])
                     epoch_train_loss_collector.append(results["loss"].item())
                 else:
                     # epoch_train_loss_collector.append(0)
@@ -193,8 +194,8 @@ class BaseNNRegressor(BaseNNModel, BaseClassifier):
                         inputs = self.assemble_input_data(data)
                         results = self.model.forward(inputs)
                         if not torch.isnan(results["loss"]):
-                            epoch_val_predictions_collector.append(results["prediction"].detach().cpu().numpy()[0][0])
-                            epoch_val_gt_collector.append(results["gt"].detach().cpu().numpy()[0][0])
+                            epoch_val_predictions_collector.append(torch.tensor(results["prediction"]).detach().cpu().numpy()[-1])
+                            epoch_val_gt_collector.append(torch.tensor(results["gt"]).detach().cpu().numpy()[0][-1])
                             epoch_val_loss_collector.append(results["loss"].item())
                         else:
                             # epoch_val_loss_collector.append(0)

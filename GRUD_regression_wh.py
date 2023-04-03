@@ -28,7 +28,7 @@ def generate_dataset_from_samples(X):
 
 def generate_train_test_set(X, seq_len, train_size=50000, test_size=50000):
     X = X.iloc[:int(len(X)/seq_len)*seq_len]
-    X = X.drop('date', axis = 1)
+    X = X.drop('date', axis=1)
     X = StandardScaler().fit_transform(X.to_numpy())
 
     train_set = X[:train_size + seq_len]
@@ -57,7 +57,7 @@ def generate_train_test_set(X, seq_len, train_size=50000, test_size=50000):
 
 train_X, train_y, test_X, test_y = generate_train_test_set(X, seq_len, train_size=50000, test_size=10000)
 
-grud = GRUD_REGRESSOR(n_steps=50, n_features=6, rnn_hidden_size=32, n_classes=2, epochs=1, window=48, horizon=2)
+grud = GRUD_REGRESSOR(n_steps=50, n_features=6, rnn_hidden_size=32, n_classes=2, epochs=10, window=48, horizon=2)
 
 # saits = SAITS(n_steps=48, n_features=37, n_layers=2, d_model=256, d_inner=128, n_head=4, d_k=64, d_v=64, dropout=0.1, epochs=2)
 grud.fit(train_X, train_y, val_X=test_X, val_y=test_y)

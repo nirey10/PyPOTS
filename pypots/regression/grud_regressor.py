@@ -2,8 +2,6 @@
 PyTorch GRU-D model.
 """
 
-# Created by Wenjie Du <wenjay.du@gmail.com>
-# License: GLP-v3
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
